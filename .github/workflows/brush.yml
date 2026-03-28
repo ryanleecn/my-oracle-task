@@ -1,0 +1,46 @@
+name: Oracle ARM Auto Brush
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/30 * * * *' # 每30分钟自动运行一次
+
+jobs:
+  brush:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install OCI CLI
+        run: |
+          curl -L -O https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh
+          chmod +x install.sh
+          ./install.sh --accept-all-defaults
+          echo "/home/runner/bin" >> $GITHUB_PATH
+          exec -l $SHELL
+
+      - name: Setup Config
+        run: |
+          mkdir -p ~/.oci
+          echo "[DEFAULT]" > ~/.oci/config
+          echo "user=${{ secrets.USER_OCID }}" >> ~/.oci/config
+          echo "fingerprint=${{ secrets.FINGERPRINT }}" >> ~/.oci/config
+          echo "tenancy=${{ secrets.TENANCY_OCID }}" >> ~/.oci/config
+          echo "region=${{ secrets.REGION }}" >> ~/.oci/config
+          echo "key_file=~/.oci/key.pem" >> ~/.oci/config
+          echo "${{ secrets.PRIVATE_KEY }}" > ~/.oci/key.pem
+          chmod 600 ~/.oci/key.pem
+
+      - name: Try Launch Instance
+        run: |
+          # 尝试在凤凰城的三个AD轮询刷机
+          for ad in 1 2 3; do
+            echo "正在尝试在 AD-$ad 创建实例..."
+            oci compute instance launch \
+              --availability-domain "Uocm:US-PHOENIX-1-AD-$ad" \
+              --compartment-id "${{ secrets.TENANCY_OCID }}" \
+              --shape "VM.Standard.A1.Flex" \
+              --shape-config '{"ocpus":4,"memoryInGBs":24}' \
+              --image-id "ocid1.image.oc1.phx.aaaaaaaa76v7sc3ypsmcy724shn5pxh6fpp5x3px36mxtfay2fnd36675pqa" \
+              --subnet-id "${{ secrets.SUBNET_ID }}" \
+              --assign-public-ip true \
+              --display-name "Phoenix-ARM" \
+              --wait-for-state RUNNING --max-wait-seconds 10 || echo "AD-$ad 没货，继续尝试下一个..."
+          done
