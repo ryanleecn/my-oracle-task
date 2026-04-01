@@ -2,7 +2,7 @@ name: Oracle ARM Fair Sniper V6.5
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/10 * * * *' # 10分钟一次，稳如泰山
+    - cron: '*/8 * * * *' # 8分钟一次，稳如泰山
 
 jobs:
   brush:
