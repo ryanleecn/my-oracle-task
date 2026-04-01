@@ -2,7 +2,7 @@ name: Oracle ARM Auto Brush V4-Dynamic
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/10 * * * *' # 每10分钟运行一次
+    - cron: '*/8 * * * *' # 每8分钟运行一次
 
 jobs:
   brush:
