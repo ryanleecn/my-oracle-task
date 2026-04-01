@@ -1,8 +1,8 @@
-name: Oracle ARM Auto Brush V4-Dynamic
+name: Oracle ARM Extreme Burst V6.0
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/8 * * * *' # 每8分钟运行一次
+    - cron: '*/10 * * * *' # 10分钟触发一次，保持稳定
 
 jobs:
   brush:
@@ -28,40 +28,41 @@ jobs:
           chmod 600 ~/.oci/key.pem ~/.oci/config
           ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
 
-      - name: Find AD and Image Automatically Then Brush
+      - name: Extreme Burst Brush
         run: |
           export OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True
           
-          echo "=== 步骤 1: 正在自动查询您账号专属的 AD 名字 ==="
+          # 自动获取 AD 列表
           AD_LIST=$(oci iam availability-domain list --compartment-id "${{ secrets.TENANCY_OCID }}" --query "data[*].name" --raw-output | jq -r '.[]')
           
-          if [ -z "$AD_LIST" ]; then
-            echo "无法自动获取 AD，使用备用列表..."
-            AD_LIST="lxlp:PHX-AD-1 lxlp:PHX-AD-2 lxlp:PHX-AD-3"
-          fi
-          echo "查询到的 AD 列表为:"
-          echo "$AD_LIST"
-
-          echo "=== 步骤 2: 正在自动查询最新的 Ubuntu 24.04 ARM 镜像 ==="
+          # 自动获取镜像
           IMAGE_ID=$(oci compute image list --compartment-id "${{ secrets.TENANCY_OCID }}" --operating-system "Canonical Ubuntu" --operating-system-version "24.04" --shape "VM.Standard.A1.Flex" --query 'data[0].id' --raw-output)
           
-          if [ "$IMAGE_ID" == "None" ] || [ -z "$IMAGE_ID" ]; then
-            IMAGE_ID="ocid1.image.oc1.phx.aaaaaaaavfbkczxpy4zopkqswucpfx7tv7x5xyjvppsp4l5tjkwv5kctr3dq"
-          fi
-          echo "最终使用镜像 OCID: $IMAGE_ID"
-
-          echo "=== 步骤 3: 开始全自动轮询刷机 ==="
+          echo "开始全自动极端暴力刷机模式 (144轮/天, 4320次/天)..."
+          
           for ad in $AD_LIST; do
-            echo "正在尝试在 $ad 创建实例..."
-            oci compute instance launch \
-              --availability-domain "$ad" \
-              --compartment-id "${{ secrets.TENANCY_OCID }}" \
-              --shape "VM.Standard.A1.Flex" \
-              --shape-config '{"ocpus":4,"memoryInGBs":24}' \
-              --image-id "$IMAGE_ID" \
-              --subnet-id "${{ secrets.SUBNET_ID }}" \
-              --ssh-authorized-keys-file ~/.ssh/id_rsa.pub \
-              --assign-public-ip true \
-              --display-name "Phoenix-ARM-24.04" \
-              --wait-for-state RUNNING --max-wait-seconds 10 || echo "$ad 尝试结束"
+            echo "=========================================="
+            echo "正在冲击可用性域: $ad"
+            
+            # 内部超级连击：每个 AD 连续冲击 10 次
+            for i in {1..10}; do
+              echo "AD: $ad -> 第 $i 次暴力冲击..."
+              
+              # 发起创建请求
+              oci compute instance launch \
+                --availability-domain "$ad" \
+                --compartment-id "${{ secrets.TENANCY_OCID }}" \
+                --shape "VM.Standard.A1.Flex" \
+                --shape-config '{"ocpus":4,"memoryInGBs":24}' \
+                --image-id "$IMAGE_ID" \
+                --subnet-id "${{ secrets.SUBNET_ID }}" \
+                --ssh-authorized-keys-file ~/.ssh/id_rsa.pub \
+                --assign-public-ip true \
+                --display-name "PHX-ULTRA-$(date +%m%d-%H%M)" \
+                --wait-for-state RUNNING --max-wait-seconds 1 \
+                && (echo "!!! 恭喜中奖 !!! 4核24G神机已到手！"; exit 0) || echo "没货，继续..."
+              
+              # 关键步骤：设置2秒的冷却，防止被甲骨文封禁 API
+              sleep 2
+            done
           done
