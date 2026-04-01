@@ -1,8 +1,8 @@
-name: Oracle ARM Extreme Burst V6.0
+name: Oracle ARM Safe & Optimized V6.2
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/10 * * * *' # 10分钟触发一次，保持稳定
+    - cron: '*/10 * * * *' # 保持10分钟触发一次，绝对稳定
 
 jobs:
   brush:
@@ -28,27 +28,24 @@ jobs:
           chmod 600 ~/.oci/key.pem ~/.oci/config
           ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
 
-      - name: Extreme Burst Brush
+      - name: Safe Optimized Brush
         run: |
           export OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True
           
-          # 自动获取 AD 列表
+          # 自动获取镜像和 AD 名
           AD_LIST=$(oci iam availability-domain list --compartment-id "${{ secrets.TENANCY_OCID }}" --query "data[*].name" --raw-output | jq -r '.[]')
-          
-          # 自动获取镜像
           IMAGE_ID=$(oci compute image list --compartment-id "${{ secrets.TENANCY_OCID }}" --operating-system "Canonical Ubuntu" --operating-system-version "24.04" --shape "VM.Standard.A1.Flex" --query 'data[0].id' --raw-output)
           
-          echo "开始全自动极端暴力刷机模式 (144轮/天, 4320次/天)..."
+          echo "开始全自动极速稳健刷机 (12次尝试/轮, 1728次尝试/天)..."
           
           for ad in $AD_LIST; do
-            echo "=========================================="
-            echo "正在冲击可用性域: $ad"
+            echo "------------------------------------------"
+            echo "正在冲击: $ad"
             
-            # 内部超级连击：每个 AD 连续冲击 10 次
-            for i in {1..10}; do
-              echo "AD: $ad -> 第 $i 次暴力冲击..."
+            # 内部连击：每个 AD 连续冲击 4 次，确保单次运行不超时
+            for i in {1..4}; do
+              echo "AD: $ad -> 第 $i 次尝试..."
               
-              # 发起创建请求
               oci compute instance launch \
                 --availability-domain "$ad" \
                 --compartment-id "${{ secrets.TENANCY_OCID }}" \
@@ -58,11 +55,10 @@ jobs:
                 --subnet-id "${{ secrets.SUBNET_ID }}" \
                 --ssh-authorized-keys-file ~/.ssh/id_rsa.pub \
                 --assign-public-ip true \
-                --display-name "PHX-ULTRA-$(date +%m%d-%H%M)" \
+                --display-name "PHX-V6.2-$(date +%m%d-%H%M)" \
                 --wait-for-state RUNNING --max-wait-seconds 1 \
-                && (echo "!!! 恭喜中奖 !!! 4核24G神机已到手！"; exit 0) || echo "没货，继续..."
+                && (echo "!!! 恭喜中奖 !!!"; exit 0) || echo "暂时没货..."
               
-              # 关键步骤：设置2秒的冷却，防止被甲骨文封禁 API
-              sleep 2
+              sleep 3 # 冷却间隔增加到3秒，模拟更自然的手动重试
             done
           done
