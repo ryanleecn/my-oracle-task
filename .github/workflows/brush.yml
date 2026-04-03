@@ -1,12 +1,14 @@
-name: Oracle ARM Pure Sniper V6.9
+name: Oracle ARM Safe Long-Haul V7.1
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/10 * * * *' # 10分钟一轮，这是你测算出的黄金频率
+    - cron: '*/15 * * * *' # 虽然 GitHub 会有延迟，但这个设定是目前最稳的
 
 jobs:
   brush:
     runs-on: ubuntu-latest
+    # 设置单次任务超时时间为 60 分钟，给脚本留足呼吸空间
+    timeout-minutes: 60
     steps:
       - name: Install OCI CLI
         run: |
@@ -28,33 +30,54 @@ jobs:
           chmod 600 ~/.oci/key.pem ~/.oci/config
           ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
 
-      - name: Pure Brush Task
+      - name: Long-Haul Sentry Loop (45 Minutes)
         run: |
           export OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True
+          START_TIME=$(date +%s) # 记录任务开始时间
           
-          # 获取 AD 列表并按 1,2,3 顺序排好
+          # 1. 预先获取基础信息，减少后续循环开销
           AD_LIST=$(oci iam availability-domain list --compartment-id "${{ secrets.TENANCY_OCID }}" --query "data[*].name" --raw-output | jq -r '.[]' | sort)
-          
-          # 获取镜像 ID
           IMAGE_ID=$(oci compute image list --compartment-id "${{ secrets.TENANCY_OCID }}" --operating-system "Canonical Ubuntu" --operating-system-version "24.04" --shape "VM.Standard.A1.Flex" --query 'data[0].id' --raw-output)
           
-          echo "=== 纯净刷机模式启动 (每 10 分钟敲 3 个门) ==="
-          
-          for ad in $AD_LIST; do
-            echo "正在冲击: $ad"
+          echo "=== 凤凰城 45 分钟长效驻守模式启动 ==="
+          echo "使用镜像: $IMAGE_ID"
+
+          # 开启永真循环，内部靠时间判断退出
+          while true; do
+            CURRENT_TIME=$(date +%s)
+            ELAPSED=$(( CURRENT_TIME - START_TIME ))
             
-            oci compute instance launch \
-              --availability-domain "$ad" \
-              --compartment-id "${{ secrets.TENANCY_OCID }}" \
-              --shape "VM.Standard.A1.Flex" \
-              --shape-config '{"ocpus":4,"memoryInGBs":24}' \
-              --image-id "$IMAGE_ID" \
-              --subnet-id "${{ secrets.SUBNET_ID }}" \
-              --ssh-authorized-keys-file ~/.ssh/id_rsa.pub \
-              --assign-public-ip true \
-              --display-name "PHX-V6.9-$(date +%m%d)" \
-              --wait-for-state RUNNING --max-wait-seconds 1 \
-              && (echo "!!! 恭喜中奖 !!!"; exit 0) || echo "$ad 暂时没货..."
+            # 安全阈值：运行满 2700 秒 (45分钟) 自动礼貌退出
+            if [ $ELAPSED -gt 2700 ]; then
+              echo "=== 任务已满 45 分钟，为防止任务重叠，脚本主动撤退 ==="
+              exit 0
+            fi
+
+            echo "------------------------------------------"
+            echo "当前任务已坚持: $ELAPSED 秒"
+
+            for ad in $AD_LIST; do
+              echo "正在冲击可用性域: $ad"
+              
+              # 发起创建请求
+              # 注意：脚本带有中奖即停逻辑
+              oci compute instance launch \
+                --availability-domain "$ad" \
+                --compartment-id "${{ secrets.TENANCY_OCID }}" \
+                --shape "VM.Standard.A1.Flex" \
+                --shape-config '{"ocpus":4,"memoryInGBs":24}' \
+                --image-id "$IMAGE_ID" \
+                --subnet-id "${{ secrets.SUBNET_ID }}" \
+                --ssh-authorized-keys-file ~/.ssh/id_rsa.pub \
+                --assign-public-ip true \
+                --display-name "PHX-V7.1-$(date +%m%d)" \
+                --wait-for-state RUNNING --max-wait-seconds 1 \
+                && (echo "!!! 恭喜中奖 !!! 4核24G神机到手！"; exit 0) || echo "$ad 暂无资源..."
+              
+              # 每个 AD 之间稍微喘口气 (5秒)
+              sleep 5
+            done
+            
+            echo "--- 本轮扫描结束，休息 30 秒后开始下一轮 ---"
+            sleep 30
           done
-          
-          echo "=== 任务圆满完成，正在退出休息，等待下个 10 分钟周期 ==="
