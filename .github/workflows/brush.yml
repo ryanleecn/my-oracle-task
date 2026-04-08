@@ -1,13 +1,12 @@
-name: Oracle ARM Safe Long-Haul V7.1
+name: Oracle ARM Fixed-Key Sniper V7.2
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *' # 虽然 GitHub 会有延迟，但这个设定是目前最稳的
+    - cron: '*/15 * * * *'
 
 jobs:
   brush:
     runs-on: ubuntu-latest
-    # 设置单次任务超时时间为 60 分钟，给脚本留足呼吸空间
     timeout-minutes: 60
     steps:
       - name: Install OCI CLI
@@ -17,7 +16,7 @@ jobs:
           ./install.sh --accept-all-defaults
           echo "/home/runner/bin" >> $GITHUB_PATH
 
-      - name: Setup Config and SSH Key
+      - name: Setup Config
         run: |
           mkdir -p ~/.oci
           echo "[DEFAULT]" > ~/.oci/config
@@ -28,39 +27,32 @@ jobs:
           echo "key_file=~/.oci/key.pem" >> ~/.oci/config
           echo "${{ secrets.PRIVATE_KEY }}" > ~/.oci/key.pem
           chmod 600 ~/.oci/key.pem ~/.oci/config
-          ssh-keygen -t rsa -N "" -f ~/.ssh/id_rsa
 
-      - name: Long-Haul Sentry Loop (45 Minutes)
+      - name: Fixed-Key Sentry Loop
         run: |
           export OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True
-          START_TIME=$(date +%s) # 记录任务开始时间
+          START_TIME=$(date +%s)
           
-          # 1. 预先获取基础信息，减少后续循环开销
+          # 直接把 Secret 里的公钥写入临时文件，供甲骨文读取
+          echo "${{ secrets.USER_SSH_PUB_KEY }}" > ~/.ssh/authorized_keys_temp
+          
           AD_LIST=$(oci iam availability-domain list --compartment-id "${{ secrets.TENANCY_OCID }}" --query "data[*].name" --raw-output | jq -r '.[]' | sort)
           IMAGE_ID=$(oci compute image list --compartment-id "${{ secrets.TENANCY_OCID }}" --operating-system "Canonical Ubuntu" --operating-system-version "24.04" --shape "VM.Standard.A1.Flex" --query 'data[0].id' --raw-output)
           
-          echo "=== 凤凰城 45 分钟长效驻守模式启动 ==="
-          echo "使用镜像: $IMAGE_ID"
+          echo "=== 凤凰城 V7.2 固定钥匙版启动 ==="
 
-          # 开启永真循环，内部靠时间判断退出
           while true; do
             CURRENT_TIME=$(date +%s)
             ELAPSED=$(( CURRENT_TIME - START_TIME ))
             
-            # 安全阈值：运行满 2700 秒 (45分钟) 自动礼貌退出
             if [ $ELAPSED -gt 2700 ]; then
-              echo "=== 任务已满 45 分钟，为防止任务重叠，脚本主动撤退 ==="
+              echo "=== 任务已满 45 分钟，安全撤退 ==="
               exit 0
             fi
 
-            echo "------------------------------------------"
-            echo "当前任务已坚持: $ELAPSED 秒"
-
             for ad in $AD_LIST; do
-              echo "正在冲击可用性域: $ad"
+              echo "冲击: $ad (已坚持 $ELAPSED 秒)"
               
-              # 发起创建请求
-              # 注意：脚本带有中奖即停逻辑
               oci compute instance launch \
                 --availability-domain "$ad" \
                 --compartment-id "${{ secrets.TENANCY_OCID }}" \
@@ -68,16 +60,14 @@ jobs:
                 --shape-config '{"ocpus":4,"memoryInGBs":24}' \
                 --image-id "$IMAGE_ID" \
                 --subnet-id "${{ secrets.SUBNET_ID }}" \
-                --ssh-authorized-keys-file ~/.ssh/id_rsa.pub \
+                --ssh-authorized-keys-file ~/.ssh/authorized_keys_temp \
                 --assign-public-ip true \
-                --display-name "PHX-V7.1-$(date +%m%d)" \
+                --display-name "PHX-V7.2-$(date +%m%d)" \
                 --wait-for-state RUNNING --max-wait-seconds 1 \
                 && (echo "!!! 恭喜中奖 !!! 4核24G神机到手！"; exit 0) || echo "$ad 暂无资源..."
               
-              # 每个 AD 之间稍微喘口气 (5秒)
               sleep 5
             done
             
-            echo "--- 本轮扫描结束，休息 30 秒后开始下一轮 ---"
             sleep 30
           done
