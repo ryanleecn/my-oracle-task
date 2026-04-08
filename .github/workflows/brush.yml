@@ -1,4 +1,4 @@
-name: Oracle ARM Fixed-Key Sniper V7.2
+name: Oracle ARM Fixed-Key Sniper V7.2.1
 on:
   workflow_dispatch:
   schedule:
@@ -33,24 +33,28 @@ jobs:
           export OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True
           START_TIME=$(date +%s)
           
-          # 直接把 Secret 里的公钥写入临时文件，供甲骨文读取
-          echo "${{ secrets.USER_SSH_PUB_KEY }}" > ~/.ssh/authorized_keys_temp
+          # 【核心修复】先创建文件夹，再写入公钥文件
+          mkdir -p ~/.ssh
+          echo "${{ secrets.USER_SSH_PUB_KEY }}" > ~/.ssh/oracle_public_key.pub
           
           AD_LIST=$(oci iam availability-domain list --compartment-id "${{ secrets.TENANCY_OCID }}" --query "data[*].name" --raw-output | jq -r '.[]' | sort)
           IMAGE_ID=$(oci compute image list --compartment-id "${{ secrets.TENANCY_OCID }}" --operating-system "Canonical Ubuntu" --operating-system-version "24.04" --shape "VM.Standard.A1.Flex" --query 'data[0].id' --raw-output)
           
-          echo "=== 凤凰城 V7.2 固定钥匙版启动 ==="
+          echo "=== 凤凰城 V7.2.1 修复版启动 ==="
+          echo "使用您的固定公钥进行申请..."
 
           while true; do
             CURRENT_TIME=$(date +%s)
             ELAPSED=$(( CURRENT_TIME - START_TIME ))
             
+            # 运行 45 分钟撤退
             if [ $ELAPSED -gt 2700 ]; then
               echo "=== 任务已满 45 分钟，安全撤退 ==="
               exit 0
             fi
 
             for ad in $AD_LIST; do
+              echo "------------------------------------------"
               echo "冲击: $ad (已坚持 $ELAPSED 秒)"
               
               oci compute instance launch \
@@ -60,14 +64,15 @@ jobs:
                 --shape-config '{"ocpus":4,"memoryInGBs":24}' \
                 --image-id "$IMAGE_ID" \
                 --subnet-id "${{ secrets.SUBNET_ID }}" \
-                --ssh-authorized-keys-file ~/.ssh/authorized_keys_temp \
+                --ssh-authorized-keys-file ~/.ssh/oracle_public_key.pub \
                 --assign-public-ip true \
                 --display-name "PHX-V7.2-$(date +%m%d)" \
                 --wait-for-state RUNNING --max-wait-seconds 1 \
-                && (echo "!!! 恭喜中奖 !!! 4核24G神机到手！"; exit 0) || echo "$ad 暂无资源..."
+                && (echo "!!! 恭喜中奖 !!! 机器已到手！"; exit 0) || echo "$ad 暂无资源..."
               
               sleep 5
             done
             
+            echo "--- 轮询结束，休息 30 秒 ---"
             sleep 30
           done
